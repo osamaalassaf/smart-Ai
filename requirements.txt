@@ -1,0 +1,11 @@
+# Smart Energy AI — Railway Runtime Dependencies
+Flask>=3.0
+gunicorn>=21.0
+python-dotenv>=1.0
+pandas>=2.0
+numpy>=1.24
+scikit-learn>=1.9
+joblib>=1.3
+lime>=0.2.0.1
+reportlab>=4.0
+requests>=2.31

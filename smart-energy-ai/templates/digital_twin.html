@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-intro">
+  <div>
+    <div class="kicker">DIGITAL TWIN</div>
+    <h2>Test the intervention before touching the system.</h2>
+    <p>Compare candidate actions using the simulation results produced by the agent lifecycle.</p>
+  </div>
+  <a class="primary-btn" href="{{ url_for('pages.operations') }}">Open current operation →</a>
+</section>
+
+<!-- LIVE SIMULATION STATUS BAR -->
+<div class="live-status-bar" style="display:flex;align-items:center;gap:16px;padding:10px 20px;background:#1e1624;border-bottom:1px solid #2e2535;font-size:12px;color:#a89fc0;">
+  <span style="color:#7fff7f;font-weight:700;letter-spacing:.08em;">● LIVE SIMULATION</span>
+  <span>Operational Time: <strong id="dt-op-time" style="color:#F4EFE4;">—</strong></span>
+  <span style="margin-left:auto;">Updated <span id="live-updated-ago-dt" style="color:#F4EFE4;">0</span>s ago</span>
+</div>
+
+<!-- LIVE KPI STRIP -->
+<section class="kpi-grid compact">
+  <article class="kpi-card">
+    <div class="kpi-label">LIVE LOAD</div>
+    <div class="kpi-value" id="dt-load">—</div>
+    <div class="kpi-meta" style="color:#7a7090;font-size:10px;">Building total demand</div>
+  </article>
+  <article class="kpi-card">
+    <div class="kpi-label">SOLAR NOW</div>
+    <div class="kpi-value gold" id="dt-solar">—</div>
+    <div class="kpi-meta" style="color:#7a7090;font-size:10px;">PV model · NASA POWER</div>
+  </article>
+  <article class="kpi-card">
+    <div class="kpi-label">GRID IMPORT</div>
+    <div class="kpi-value" id="dt-grid">—</div>
+    <div class="kpi-meta" style="color:#7a7090;font-size:10px;">Net from grid</div>
+  </article>
+</section>
+
+<section class="panel twin-banner">
+  <div class="twin-orb">◇</div>
+  <div>
+    <div class="panel-kicker">SIMULATION ENVIRONMENT</div>
+    <h3>Operational decisions are evaluated virtually first.</h3>
+    <p>The selected action is not sent to physical equipment. Execution remains explicitly simulated for the demo.</p>
+  </div>
+  <div class="sim-badge large">SIMULATED</div>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <div><div class="panel-kicker">SCENARIO COMPARISON</div><h3>Candidate actions</h3></div>
+    <div id="twin-event" class="event-id">No active event</div>
+  </div>
+  <div id="twin-candidates" class="twin-grid">
+    <div class="empty-state">Run AI analysis from AI Operations to populate the Digital Twin.</div>
+  </div>
+</section>
+
+<section class="two-col">
+  <article class="panel">
+    <div class="panel-kicker">SELECTION LOGIC</div>
+    <h3>How the agent chooses</h3>
+    <div class="logic-list">
+      <div><span>01</span><b>Safety constraints</b><em>Reject unsafe or invalid actions.</em></div>
+      <div><span>02</span><b>Operational feasibility</b><em>Check building and system limits.</em></div>
+      <div><span>03</span><b>Estimated impact</b><em>Compare predicted energy reduction.</em></div>
+      <div><span>04</span><b>Human approval</b><em>Require a decision before execution.</em></div>
+    </div>
+  </article>
+  <article class="panel">
+    <div class="panel-kicker">CURRENT ACTION</div>
+    <h3 id="twin-selected">No action selected</h3>
+    <div id="twin-selected-meta" class="metric-stack"></div>
+  </article>
+</section>
+{% endblock %}

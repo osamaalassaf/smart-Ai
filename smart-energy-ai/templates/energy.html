@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-intro">
+  <div>
+    <div class="kicker">ENERGY MONITOR</div>
+    <h2>See the operating signal before acting.</h2>
+    <p>Consumption, solar and HVAC behavior across the selected building.</p>
+  </div>
+  <div class="segmented">
+    <button class="seg active" data-series="consumption">Consumption</button>
+    <button class="seg active" data-series="solar">Solar</button>
+    <button class="seg active" data-series="hvac">HVAC</button>
+  </div>
+</section>
+
+<!-- LIVE SIMULATION STATUS BAR -->
+<div class="live-status-bar" style="display:flex;align-items:center;gap:16px;padding:10px 20px;background:#1e1624;border-bottom:1px solid #2e2535;font-size:12px;color:#a89fc0;">
+  <span style="color:#7fff7f;font-weight:700;letter-spacing:.08em;">● LIVE SIMULATION</span>
+  <span>Operational Time: <strong id="live-op-time-energy" style="color:#F4EFE4;">—</strong></span>
+  <span style="margin-left:auto;">Updated <span id="live-updated-ago-energy" style="color:#F4EFE4;">0</span>s ago</span>
+</div>
+
+<section class="kpi-grid compact">
+  <article class="kpi-card">
+    <div class="kpi-label">LOAD</div>
+    <div class="kpi-value" id="energy-load">—</div>
+    <div class="kpi-meta" style="color:#7a7090;font-size:10px;">Historical profile · simulation</div>
+  </article>
+  <article class="kpi-card">
+    <div class="kpi-label">SOLAR</div>
+    <div class="kpi-value gold" id="energy-solar">—</div>
+    <div class="kpi-meta" style="color:#7a7090;font-size:10px;">PV model · NASA POWER</div>
+  </article>
+  <article class="kpi-card">
+    <div class="kpi-label">HVAC</div>
+    <div class="kpi-value" id="energy-hvac">—</div>
+    <div class="kpi-meta" style="color:#7a7090;font-size:10px;">Derived from load profile</div>
+  </article>
+  <article class="kpi-card">
+    <div class="kpi-label">OCCUPANCY</div>
+    <div class="kpi-value" id="energy-occupancy">—</div>
+    <div class="kpi-meta" style="color:#7a7090;font-size:10px;">Operational estimate</div>
+  </article>
+  <article class="kpi-card">
+    <div class="kpi-label">GRID IMPORT</div>
+    <div class="kpi-value" id="energy-grid-import">—</div>
+    <div class="kpi-meta" style="color:#7a7090;font-size:10px;">Load minus solar</div>
+  </article>
+</section>
+
+<section class="panel chart-panel large">
+  <div class="panel-head">
+    <div><div class="panel-kicker">LIVE DATA WINDOW</div><h3>Energy behavior · last 48 hours</h3></div>
+    <div class="legend">
+      <span><i class="legend-dot gold-dot"></i>Solar</span>
+      <span><i class="legend-dot burgundy-dot"></i>HVAC</span>
+      <span><i class="legend-dot cream-dot"></i>Consumption</span>
+    </div>
+  </div>
+  <div class="chart-wrap tall"><canvas id="energy-chart"></canvas></div><div id="energy-caption" class="chart-caption">last 48 hours to —</div>
+</section>
+
+<section class="two-col">
+  <article class="panel">
+    <div class="panel-head"><div><div class="panel-kicker">EVENT FEED</div><h3>ML-detected signals</h3></div></div>
+    <div id="energy-events" class="event-list"></div>
+  </article>
+  <article class="panel">
+    <div class="panel-head"><div><div class="panel-kicker">READING GUIDE</div><h3>What the agent watches</h3></div></div>
+    <div class="guide-list">
+      <div><b>Consumption</b><span>Building electrical demand over time.</span></div>
+      <div><b>Solar</b><span>Estimated photovoltaic generation.</span></div>
+      <div><b>HVAC</b><span>Heating and cooling load contribution.</span></div>
+      <div><b>Occupancy</b><span>Operational context for demand anomalies.</span></div>
+    </div>
+  </article>
+</section>
+{% endblock %}

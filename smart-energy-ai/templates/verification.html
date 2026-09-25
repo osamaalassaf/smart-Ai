@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-intro">
+  <div>
+    <div class="kicker">VERIFICATION</div>
+    <h2>Close the loop with measured evidence.</h2>
+    <p>Verification compares the simulated outcome with the expected operational target.</p>
+  </div>
+  <div class="sim-badge large">SIMULATED EXECUTION</div>
+</section>
+
+<section class="kpi-grid compact">
+  <article class="kpi-card"><div class="kpi-label">VERIFICATION STATUS</div><div class="kpi-value smallish" id="ver-status">—</div><div class="kpi-meta">latest result</div></article>
+  <article class="kpi-card"><div class="kpi-label">EXPECTED SAVING</div><div class="kpi-value gold" id="ver-expected">—</div><div class="kpi-meta">kW</div></article>
+  <article class="kpi-card"><div class="kpi-label">OBSERVED SAVING</div><div class="kpi-value" id="ver-observed">—</div><div class="kpi-meta">kW</div></article>
+  <article class="kpi-card"><div class="kpi-label">THRESHOLD</div><div class="kpi-value" id="ver-threshold">—</div><div class="kpi-meta">verification criterion</div></article>
+</section>
+
+<section class="two-col">
+  <article class="panel">
+    <div class="panel-head"><div><div class="panel-kicker">LATEST RESULT</div><h3>Performance verification</h3></div></div>
+    <div id="verification-main" class="verification-card">
+      <div class="empty-state">No verification result available yet.</div>
+    </div>
+  </article>
+  <article class="panel">
+    <div class="panel-head"><div><div class="panel-kicker">AGENT HISTORY</div><h3>Verification trail</h3></div></div>
+    <div id="verification-history" class="timeline-list"></div>
+  </article>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><div><div class="panel-kicker">WHAT THIS MEANS</div><h3>Verification is a second decision layer</h3></div></div>
+  <div class="explain-grid">
+    <div><span>EXPECTED</span><b>What the simulation predicted</b><p>Target impact calculated before the action.</p></div>
+    <div><span>OBSERVED</span><b>What the simulated execution produced</b><p>Outcome measured after the action.</p></div>
+    <div><span>DECISION</span><b>Pass or replan</b><p>If the result is insufficient, the agent can select an alternative.</p></div>
+  </div>
+</section>
+{% endblock %}

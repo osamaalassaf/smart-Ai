@@ -1,0 +1,28 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# SQLite temporary lock and journal files
+*.db-wal
+*.db-shm
+*.db-journal
+
+# Operating System & IDE artifacts
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# System generated logs
+*.log
