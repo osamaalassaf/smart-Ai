@@ -6,6 +6,9 @@ import os
 import random
 import smtplib
 import logging
+import json
+import urllib.request
+import urllib.error
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from functools import wraps
@@ -30,7 +33,7 @@ log = logging.getLogger("smart_energy_ai.auth")
 auth_bp = Blueprint("auth", __name__)
 
 # =========================================================
-# CONFIGURATION & SMTP SETTINGS
+# CONFIGURATION & SMTP / BREVO SETTINGS
 # =========================================================
 
 SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
@@ -39,8 +42,18 @@ SMTP_USER = os.getenv("SMTP_USER", "osama15.alfaiez@gmail.com")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "zase gxyk bshv jeui")
 SMTP_FROM = os.getenv("SMTP_FROM", os.getenv("SMTP_USER", "osama15.alfaiez@gmail.com"))
 
-# Set to 'true' to enforce 2FA OTP codes; default is 'false' for direct, frictionless login
-REQUIRE_2FA = os.getenv("REQUIRE_2FA", "false").lower() in ("true", "1", "yes")
+# Brevo (Sendinblue) HTTPS API Configuration (Port 443 — works seamlessly on Railway & cloud)
+BREVO_API_KEY = os.getenv("BREVO_API_KEY", "").strip()
+BREVO_SENDER_EMAIL = (
+    os.getenv("BREVO_SENDER_EMAIL")
+    or os.getenv("SMTP_FROM")
+    or os.getenv("SMTP_USER")
+    or "osama15.alfaiez@gmail.com"
+).strip()
+BREVO_SENDER_NAME = os.getenv("BREVO_SENDER_NAME", "Smart Energy AI").strip()
+
+# Set to 'true' to enforce 2FA OTP codes; default is 'true' for full security
+REQUIRE_2FA = os.getenv("REQUIRE_2FA", "true").lower() in ("true", "1", "yes")
 
 # =========================================================
 # BILINGUAL FLASH MESSAGES (100% PURE EN / AR)
@@ -168,8 +181,62 @@ def flash_auth(key: str, category: str = "info", **kwargs) -> None:
 
 
 # =========================================================
-# SMTP EMAIL SENDER (GMAIL SSL PORT 465)
+# EMAIL SENDER (BREVO HTTPS API + SMTP FALLBACK)
 # =========================================================
+
+def send_email_via_brevo(
+    to_email: str,
+    subject: str,
+    html_content: str,
+    text_content: str = "",
+) -> bool:
+    """Send transactional verification email using Brevo (Sendinblue) HTTPS API over Port 443."""
+    api_key = (os.getenv("BREVO_API_KEY") or BREVO_API_KEY).strip()
+    if not api_key:
+        return False
+
+    sender_email = (
+        os.getenv("BREVO_SENDER_EMAIL")
+        or os.getenv("SMTP_FROM")
+        or os.getenv("SMTP_USER")
+        or "osama15.alfaiez@gmail.com"
+    ).strip()
+    sender_name = os.getenv("BREVO_SENDER_NAME", "Smart Energy AI").strip()
+
+    url = "https://api.brevo.com/v3/smtp/email"
+    headers = {
+        "accept": "application/json",
+        "api-key": api_key,
+        "content-type": "application/json",
+        "User-Agent": "SmartEnergyAI/1.0",
+    }
+    payload = {
+        "sender": {"name": sender_name, "email": sender_email},
+        "to": [{"email": to_email}],
+        "subject": subject,
+        "htmlContent": html_content,
+    }
+    if text_content:
+        payload["textContent"] = text_content
+
+    try:
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=12.0) as resp:
+            resp_body = resp.read().decode("utf-8", errors="ignore")
+            log.info("Brevo API delivery successful to %s (Status: %s): %s", to_email, resp.status, resp_body)
+            print(f"[AUTH][BREVO] Verification email delivered to {to_email} successfully!")
+            return True
+    except urllib.error.HTTPError as http_err:
+        err_body = http_err.read().decode("utf-8", errors="ignore")
+        log.error("Brevo API HTTP Error %s: %s", http_err.code, err_body)
+        print(f"[AUTH][BREVO] API Error {http_err.code}: {err_body}")
+        return False
+    except Exception as exc:
+        log.error("Brevo API unexpected exception: %s", exc)
+        print(f"[AUTH][BREVO] Exception: {exc}")
+        return False
+
 
 def send_verification_email(
     to_email: str,
@@ -179,7 +246,7 @@ def send_verification_email(
     lang: Optional[str] = None
 ) -> bool:
     """
-    إرسال بريد إلكتروني حقيقي يحتوي على رمز التحقق OTP عبر Gmail SMTP_SSL (465).
+    إرسال بريد إلكتروني حقيقي يحتوي على رمز التحقق OTP عبر Brevo HTTPS API أو Gmail SMTP.
     مع توجيه كود الأدمن الافتراضي تلقائياً إلى بريد الأدمن الحقيقي.
     """
     real_to = to_email.strip()
@@ -248,17 +315,30 @@ def send_verification_email(
     log.info("🔐 OTP Generated for [%s -> %s]: %s (Type: %s)", to_email, real_to, code, code_type)
     print(f"\n[AUTH] Verification Code for {real_to}: >>> {code} <<<\n")
 
+    plain_text = f"Your Smart Energy AI verification code is: {code} (valid for 10 minutes)."
+
+    # Attempt 1: Brevo HTTPS API (Port 443 — works seamlessly on Railway & cloud)
+    if os.getenv("BREVO_API_KEY", "").strip() or BREVO_API_KEY:
+        if send_email_via_brevo(
+            to_email=real_to,
+            subject=subject,
+            html_content=html_content,
+            text_content=plain_text,
+        ):
+            return True
+        log.warning("Brevo API delivery failed, attempting fallback to direct SMTP...")
+
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = f"Smart Energy AI <{SMTP_FROM}>"
     msg["To"] = real_to
 
-    text_part = MIMEText(f"Your Smart Energy AI verification code is: {code} (valid for 10 minutes).", "plain")
+    text_part = MIMEText(plain_text, "plain")
     html_part = MIMEText(html_content, "html")
     msg.attach(text_part)
     msg.attach(html_part)
 
-    # Attempt 1: Port 465 SSL
+    # Attempt 2: Port 465 SSL
     try:
         with smtplib.SMTP_SSL(SMTP_HOST, 465, timeout=10.0) as server:
             server.login(SMTP_USER, SMTP_PASSWORD)
@@ -268,7 +348,7 @@ def send_verification_email(
     except Exception as ssl_err:
         log.warning("SMTP SSL (465) failed (%s), attempting Port 587 STARTTLS...", ssl_err)
 
-    # Attempt 2: Port 587 STARTTLS (Railway cloud standard)
+    # Attempt 3: Port 587 STARTTLS (Railway cloud standard)
     try:
         with smtplib.SMTP(SMTP_HOST, 587, timeout=10.0) as server:
             server.starttls()
@@ -531,20 +611,22 @@ def verify_code():
             "verify_code.html",
             email=pending_email,
             code_type=pending_type,
-            active_code=pending_otp_code,
         )
 
     return render_template(
         "verify_code.html",
         email=pending_email,
         code_type=pending_type,
-        active_code=pending_otp_code,
     )
 
 
 @auth_bp.route("/verify-code/bypass", methods=["GET", "POST"])
 def bypass_verify():
-    """Allows pending user to bypass OTP and log in directly."""
+    """Allows pending user to bypass OTP only when 2FA is explicitly disabled."""
+    if REQUIRE_2FA:
+        flash_auth("otp_required", "warning")
+        return redirect(url_for("auth.verify_code"))
+
     pending_user_id = session.pop("pending_user_id", None)
     session.pop("pending_email", None)
     session.pop("pending_username", None)
