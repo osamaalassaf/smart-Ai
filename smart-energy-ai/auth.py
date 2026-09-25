@@ -255,14 +255,26 @@ def send_verification_email(
     msg.attach(text_part)
     msg.attach(html_part)
 
+    # Attempt 1: Port 465 SSL
     try:
-        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=12.0) as server:
+        with smtplib.SMTP_SSL(SMTP_HOST, 465, timeout=10.0) as server:
             server.login(SMTP_USER, SMTP_PASSWORD)
             server.send_message(msg)
-        log.info("Verification email successfully delivered to %s", real_to)
+        log.info("Verification email successfully delivered to %s via SSL (465)", real_to)
         return True
-    except Exception as exc:
-        log.error("Failed to deliver verification email to %s: %s", real_to, exc)
+    except Exception as ssl_err:
+        log.warning("SMTP SSL (465) failed (%s), attempting Port 587 STARTTLS...", ssl_err)
+
+    # Attempt 2: Port 587 STARTTLS (Railway cloud standard)
+    try:
+        with smtplib.SMTP(SMTP_HOST, 587, timeout=10.0) as server:
+            server.starttls()
+            server.login(SMTP_USER, SMTP_PASSWORD)
+            server.send_message(msg)
+        log.info("Verification email successfully delivered to %s via STARTTLS (587)", real_to)
+        return True
+    except Exception as tls_err:
+        log.error("Failed to deliver verification email to %s on both ports 465 and 587: %s", real_to, tls_err)
         return False
 
 
