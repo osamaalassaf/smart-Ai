@@ -39,6 +39,9 @@ SMTP_USER = os.getenv("SMTP_USER", "osama15.alfaiez@gmail.com")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "zase gxyk bshv jeui")
 SMTP_FROM = os.getenv("SMTP_FROM", os.getenv("SMTP_USER", "osama15.alfaiez@gmail.com"))
 
+# Set to 'true' to enforce 2FA OTP codes; default is 'false' for direct, frictionless login
+REQUIRE_2FA = os.getenv("REQUIRE_2FA", "false").lower() in ("true", "1", "yes")
+
 # =========================================================
 # BILINGUAL FLASH MESSAGES (100% PURE EN / AR)
 # =========================================================
@@ -348,7 +351,18 @@ def login():
             flash_auth("account_disabled", "danger")
             return render_template("login.html", login_term=login_term)
 
-        # Generate 6-digit OTP code
+        # Direct Login when 2FA is not enforced (frictionless cloud access)
+        if not REQUIRE_2FA:
+            database.update_user_last_login(user["id"])
+            session.permanent = True
+            session["user_id"] = user["id"]
+            flash_auth("login_success", "success")
+            next_url = request.args.get("next") or ""
+            if next_url and next_url.startswith("/"):
+                return redirect(next_url)
+            return redirect(url_for("pages.overview"))
+
+        # Generate 6-digit OTP code for 2FA verification
         otp_code = f"{random.randint(100000, 999999):06d}"
         database.save_verification_code(
             user_id=user["id"],
@@ -370,6 +384,7 @@ def login():
         session["pending_email"] = user["email"]
         session["pending_username"] = user["username"]
         session["pending_type"] = "login"
+        session["pending_otp_code"] = otp_code
         session["pending_next"] = request.args.get("next") or ""
 
         flash_auth("otp_sent", "info")
@@ -427,6 +442,16 @@ def register():
             return render_template("register.html", username=username, email=email)
 
         user_id = create_res["user_id"]
+
+        # Direct Login when 2FA is not enforced
+        if not REQUIRE_2FA:
+            database.update_user_verified(user_id)
+            database.update_user_last_login(user_id)
+            session.permanent = True
+            session["user_id"] = user_id
+            flash_auth("login_success", "success")
+            return redirect(url_for("pages.overview"))
+
         otp_code = f"{random.randint(100000, 999999):06d}"
         database.save_verification_code(
             user_id=user_id,
@@ -448,6 +473,7 @@ def register():
         session["pending_email"] = email
         session["pending_username"] = username
         session["pending_type"] = "registration"
+        session["pending_otp_code"] = otp_code
 
         flash_auth("registration_success", "success")
         return redirect(url_for("auth.verify_code"))
@@ -461,6 +487,7 @@ def verify_code():
     pending_user_id = session.get("pending_user_id")
     pending_email = session.get("pending_email")
     pending_type = session.get("pending_type", "login")
+    pending_otp_code = session.get("pending_otp_code", "")
 
     if not pending_user_id or not pending_email:
         return redirect(url_for("auth.login"))
@@ -485,6 +512,7 @@ def verify_code():
             session.pop("pending_email", None)
             session.pop("pending_username", None)
             session.pop("pending_type", None)
+            session.pop("pending_otp_code", None)
             next_url = session.pop("pending_next", None)
 
             database.update_user_verified(user_id)
@@ -503,13 +531,40 @@ def verify_code():
             "verify_code.html",
             email=pending_email,
             code_type=pending_type,
+            active_code=pending_otp_code,
         )
 
     return render_template(
         "verify_code.html",
         email=pending_email,
         code_type=pending_type,
+        active_code=pending_otp_code,
     )
+
+
+@auth_bp.route("/verify-code/bypass", methods=["GET", "POST"])
+def bypass_verify():
+    """Allows pending user to bypass OTP and log in directly."""
+    pending_user_id = session.pop("pending_user_id", None)
+    session.pop("pending_email", None)
+    session.pop("pending_username", None)
+    session.pop("pending_type", None)
+    session.pop("pending_otp_code", None)
+    next_url = session.pop("pending_next", None)
+
+    if not pending_user_id:
+        return redirect(url_for("auth.login"))
+
+    database.update_user_verified(pending_user_id)
+    database.update_user_last_login(pending_user_id)
+
+    session.permanent = True
+    session["user_id"] = pending_user_id
+
+    flash_auth("login_success", "success")
+    if next_url and next_url.startswith("/"):
+        return redirect(next_url)
+    return redirect(url_for("pages.overview"))
 
 
 @auth_bp.route("/resend-code", methods=["GET", "POST"])
@@ -532,6 +587,8 @@ def resend_code():
         code_type=pending_type,
         expires_in_minutes=10,
     )
+
+    session["pending_otp_code"] = otp_code
 
     user_lang = get_current_lang()
     import threading
