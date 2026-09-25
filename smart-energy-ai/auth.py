@@ -23,6 +23,7 @@ from flask import (
     session,
     flash,
     current_app,
+    jsonify,
 )
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -38,19 +39,35 @@ auth_bp = Blueprint("auth", __name__)
 
 SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))
-SMTP_USER = os.getenv("SMTP_USER", "osama15.alfaiez@gmail.com")
+SMTP_USER = os.getenv("SMTP_USER", "osamaalassaf10@gmail.com")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "zase gxyk bshv jeui")
-SMTP_FROM = os.getenv("SMTP_FROM", os.getenv("SMTP_USER", "osama15.alfaiez@gmail.com"))
+SMTP_FROM = os.getenv("SMTP_FROM", os.getenv("SMTP_USER", "osamaalassaf10@gmail.com"))
 
 # Brevo (Sendinblue) HTTPS API Configuration (Port 443 — works seamlessly on Railway & cloud)
-BREVO_API_KEY = os.getenv("BREVO_API_KEY", "").strip()
+BREVO_API_KEY = (
+    os.getenv("BREVO_API_KEY")
+    or os.getenv("API_KEY")
+    or os.getenv("BREVO_KEY")
+    or os.getenv("BREVO")
+    or ""
+).strip("'\" \t\r\n")
+
 BREVO_SENDER_EMAIL = (
     os.getenv("BREVO_SENDER_EMAIL")
+    or os.getenv("BREVO_EMAIL")
+    or os.getenv("SENDER_EMAIL")
+    or os.getenv("EMAIL")
     or os.getenv("SMTP_FROM")
     or os.getenv("SMTP_USER")
-    or "osama15.alfaiez@gmail.com"
-).strip()
-BREVO_SENDER_NAME = os.getenv("BREVO_SENDER_NAME", "Smart Energy AI").strip()
+    or "osamaalassaf10@gmail.com"
+).strip("'\" \t\r\n")
+
+BREVO_SENDER_NAME = (
+    os.getenv("BREVO_SENDER_NAME")
+    or os.getenv("SENDER_NAME")
+    or os.getenv("NAME")
+    or "Smart Energy AI"
+).strip("'\" \t\r\n")
 
 # Set to 'true' to enforce 2FA OTP codes; default is 'true' for full security
 REQUIRE_2FA = os.getenv("REQUIRE_2FA", "true").lower() in ("true", "1", "yes")
@@ -191,17 +208,33 @@ def send_email_via_brevo(
     text_content: str = "",
 ) -> bool:
     """Send transactional verification email using Brevo (Sendinblue) HTTPS API over Port 443."""
-    api_key = (os.getenv("BREVO_API_KEY") or BREVO_API_KEY).strip()
+    api_key = (
+        os.getenv("BREVO_API_KEY")
+        or os.getenv("API_KEY")
+        or os.getenv("BREVO_KEY")
+        or os.getenv("BREVO")
+        or BREVO_API_KEY
+    ).strip("'\" \t\r\n")
     if not api_key:
+        print("[AUTH][BREVO] Warning: No Brevo API Key found in environment variables.")
         return False
 
     sender_email = (
         os.getenv("BREVO_SENDER_EMAIL")
-        or os.getenv("SMTP_FROM")
-        or os.getenv("SMTP_USER")
-        or "osama15.alfaiez@gmail.com"
-    ).strip()
-    sender_name = os.getenv("BREVO_SENDER_NAME", "Smart Energy AI").strip()
+        or os.getenv("BREVO_EMAIL")
+        or os.getenv("SENDER_EMAIL")
+        or os.getenv("EMAIL")
+        or BREVO_SENDER_EMAIL
+        or "osamaalassaf10@gmail.com"
+    ).strip("'\" \t\r\n")
+
+    sender_name = (
+        os.getenv("BREVO_SENDER_NAME")
+        or os.getenv("SENDER_NAME")
+        or os.getenv("NAME")
+        or BREVO_SENDER_NAME
+        or "Smart Energy AI"
+    ).strip("'\" \t\r\n")
 
     url = "https://api.brevo.com/v3/smtp/email"
     headers = {
@@ -225,16 +258,16 @@ def send_email_via_brevo(
         with urllib.request.urlopen(req, timeout=12.0) as resp:
             resp_body = resp.read().decode("utf-8", errors="ignore")
             log.info("Brevo API delivery successful to %s (Status: %s): %s", to_email, resp.status, resp_body)
-            print(f"[AUTH][BREVO] Verification email delivered to {to_email} successfully!")
+            print(f"[AUTH][BREVO] Verification email delivered to {to_email} successfully! Response: {resp_body}")
             return True
     except urllib.error.HTTPError as http_err:
         err_body = http_err.read().decode("utf-8", errors="ignore")
         log.error("Brevo API HTTP Error %s: %s", http_err.code, err_body)
-        print(f"[AUTH][BREVO] API Error {http_err.code}: {err_body}")
+        print(f"\n[AUTH][BREVO] >>> ERROR {http_err.code} <<<: {err_body}\n")
         return False
     except Exception as exc:
         log.error("Brevo API unexpected exception: %s", exc)
-        print(f"[AUTH][BREVO] Exception: {exc}")
+        print(f"\n[AUTH][BREVO] >>> EXCEPTION <<<: {exc}\n")
         return False
 
 
@@ -251,9 +284,14 @@ def send_verification_email(
     """
     real_to = to_email.strip()
 
-    # توجيه كود الأدمن الافتراضي إلى البريد الحقيقي المعرف في SMTP_USER
-    if real_to.lower() == "admin@smartenergy.ai" or username.lower() == "admin":
-        real_to = SMTP_USER
+    # توجيه كود الأدمن الافتراضي إلى البريد الحقيقي
+    if real_to.lower() in ("admin@smartenergy.ai", "admin@smart-energy.ai") or username.lower() == "admin":
+        real_to = (
+            os.getenv("ADMIN_EMAIL")
+            or os.getenv("BREVO_SENDER_EMAIL")
+            or os.getenv("EMAIL")
+            or "osamaalassaf10@gmail.com"
+        ).strip("'\" \t\r\n")
         log.info("Redirecting admin OTP code to real admin email: %s", real_to)
 
     current_lang = lang or get_current_lang()
@@ -955,3 +993,107 @@ def user_change_password():
     database.update_user_password(current_u["id"], new_hash)
     flash_auth("password_changed", "success")
     return redirect(url_for("pages.user_profile"))
+
+
+# =========================================================
+# DIAGNOSTIC ROUTE (BREVO & 2FA HEALTH CHECK)
+# =========================================================
+
+@auth_bp.route("/test-email")
+def test_email():
+    """Diagnostic route: tests Brevo configuration and live email sending with clear error reporting."""
+    target = (
+        request.args.get("to")
+        or os.getenv("BREVO_SENDER_EMAIL")
+        or os.getenv("EMAIL")
+        or "osamaalassaf10@gmail.com"
+    ).strip("'\" \t\r\n")
+
+    api_key = (
+        os.getenv("BREVO_API_KEY")
+        or os.getenv("API_KEY")
+        or os.getenv("BREVO_KEY")
+        or os.getenv("BREVO")
+        or BREVO_API_KEY
+    ).strip("'\" \t\r\n")
+
+    sender_email = (
+        os.getenv("BREVO_SENDER_EMAIL")
+        or os.getenv("BREVO_EMAIL")
+        or os.getenv("SENDER_EMAIL")
+        or os.getenv("EMAIL")
+        or BREVO_SENDER_EMAIL
+        or "osamaalassaf10@gmail.com"
+    ).strip("'\" \t\r\n")
+
+    sender_name = (
+        os.getenv("BREVO_SENDER_NAME")
+        or os.getenv("SENDER_NAME")
+        or os.getenv("NAME")
+        or BREVO_SENDER_NAME
+        or "Smart Energy AI"
+    ).strip("'\" \t\r\n")
+
+    test_code = f"{random.randint(100000, 999999):06d}"
+
+    diag = {
+        "api_key_detected": bool(api_key),
+        "api_key_length": len(api_key),
+        "api_key_starts_with": (api_key[:8] + "...") if api_key else "NOT_FOUND",
+        "sender_email": sender_email,
+        "sender_name": sender_name,
+        "target_recipient": target,
+        "detected_env_vars": [
+            k for k in os.environ.keys() if any(x in k.upper() for x in ("BREVO", "SMTP", "EMAIL", "MAIL", "2FA"))
+        ],
+    }
+
+    if not api_key:
+        diag["status"] = "error"
+        diag["message"] = "BREVO_API_KEY is missing or empty in Railway Variables."
+        return jsonify(diag), 400
+
+    url = "https://api.brevo.com/v3/smtp/email"
+    headers = {
+        "accept": "application/json",
+        "api-key": api_key,
+        "content-type": "application/json",
+        "User-Agent": "SmartEnergyAI/1.0",
+    }
+    payload = {
+        "sender": {"name": sender_name, "email": sender_email},
+        "to": [{"email": target}],
+        "subject": f"Smart Energy AI - Brevo Diagnostic Test [{test_code}]",
+        "htmlContent": f"<h2>Brevo Connection Test Succeeded!</h2><p>Your test OTP code is: <strong>{test_code}</strong></p>",
+    }
+
+    try:
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=12.0) as resp:
+            resp_body = resp.read().decode("utf-8", errors="ignore")
+            diag["status"] = "success"
+            diag["http_code"] = resp.status
+            try:
+                diag["brevo_response"] = json.loads(resp_body)
+            except Exception:
+                diag["brevo_response"] = resp_body
+            diag["message"] = f"Test email sent successfully to {target}! Check your inbox."
+            return jsonify(diag), 200
+    except urllib.error.HTTPError as http_err:
+        err_body = http_err.read().decode("utf-8", errors="ignore")
+        diag["status"] = "failed"
+        diag["http_code"] = http_err.code
+        try:
+            diag["brevo_error_details"] = json.loads(err_body)
+        except Exception:
+            diag["brevo_error_details"] = err_body
+        diag["troubleshooting"] = (
+            "If HTTP 400 'Sender not valid': Ensure sender_email matches the email used to register on Brevo. "
+            "If HTTP 401 'Key not found': Ensure you generated an 'API Key' in Brevo (starts with xkeysib-), not an SMTP password."
+        )
+        return jsonify(diag), 500
+    except Exception as exc:
+        diag["status"] = "exception"
+        diag["error"] = str(exc)
+        return jsonify(diag), 500
