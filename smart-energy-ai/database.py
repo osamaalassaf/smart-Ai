@@ -443,6 +443,35 @@ def init_auth_tables(db_path=None) -> None:
                 ) VALUES (?, ?, ?, ?, 1, ?, 1, 1, 1, 1, 1);
             """, ("tester", "tester@smart-energy.ai", tester_pwd_hash, "admin", now_str))
 
+        # 5. حساب المالك الرئيسي / المسؤول الأول (Osama Alassaf)
+        cursor.execute("""
+            SELECT id FROM users 
+            WHERE lower(email) IN ('osamaalassaf10@gmail.com', 'osama.alassaf10@gmail.com')
+               OR lower(username) = 'osama alassaf';
+        """)
+        osama_row = cursor.fetchone()
+        if not osama_row:
+            from werkzeug.security import generate_password_hash
+            import datetime as _dt
+            now_str = _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            osama_pwd_hash = generate_password_hash("123456")
+            cursor.execute("""
+                INSERT INTO users (
+                    username, email, password_hash, role, is_verified,
+                    created_at, can_manage_users, can_control_hvac,
+                    can_approve_actions, can_view_analytics, is_active
+                ) VALUES (?, ?, ?, ?, 1, ?, 1, 1, 1, 1, 1);
+            """, ("OSAMA ALASSAF", "osama.alassaf10@gmail.com", osama_pwd_hash, "admin", now_str))
+        else:
+            # التأكد من تفعيل الحساب والصلاحيات كاملة
+            cursor.execute("""
+                UPDATE users
+                SET role = 'admin', is_verified = 1, is_active = 1,
+                    can_manage_users = 1, can_control_hvac = 1,
+                    can_approve_actions = 1, can_view_analytics = 1
+                WHERE id = ?;
+            """, (osama_row["id"],))
+
 
 def create_user(
     username: str,
@@ -501,17 +530,45 @@ def create_user(
         return {"success": False, "error": str(e)}
 
 
+def normalize_email_for_comparison(email_str: str) -> str:
+    """Normalize email address, ignoring dots for gmail.com addresses."""
+    s = (email_str or "").strip().lower()
+    if "@gmail.com" in s:
+        local, domain = s.split("@", 1)
+        local = local.replace(".", "")
+        if "+" in local:
+            local = local.split("+")[0]
+        return f"{local}@{domain}"
+    return s
+
+
 def get_user_by_login(login_term: str, db_path=None) -> Optional[Dict[str, Any]]:
-    """البحث عن المستخدم عبر اسم المستخدم أو البريد الإلكتروني."""
-    term = login_term.strip()
+    """البحث عن المستخدم عبر اسم المستخدم أو البريد الإلكتروني مع دعم ذكي لمرونة Gmail Dots."""
+    term = (login_term or "").strip()
+    if not term:
+        return None
+
     with get_connection(db_path) as conn:
         cursor = conn.cursor()
+        # 1. تطابق مباشر (اسم المستخدم أو البريد)
         cursor.execute("""
             SELECT * FROM users
             WHERE lower(username) = lower(?) OR lower(email) = lower(?)
             LIMIT 1;
         """, (term, term))
-        return _to_dict(cursor.fetchone())
+        row = cursor.fetchone()
+        if row:
+            return _to_dict(row)
+
+        # 2. تطابق ذكي مع بريد Gmail (تجاوز النقاط في اسم البريد)
+        if "@gmail.com" in term.lower():
+            target_norm = normalize_email_for_comparison(term)
+            cursor.execute("SELECT * FROM users WHERE lower(email) LIKE '%@gmail.com';")
+            for u in cursor.fetchall():
+                if normalize_email_for_comparison(u["email"]) == target_norm:
+                    return _to_dict(u)
+
+        return None
 
 
 def get_user_by_id(user_id: int, db_path=None) -> Optional[Dict[str, Any]]:
@@ -718,6 +775,19 @@ def verify_and_consume_code(
                 LIMIT 1;
             """, (email.strip().lower(), code.strip(), code_type))
             row = cursor.fetchone()
+
+            # محاولة تطابق مرنة مع بريد Gmail لتفادي مشاكل النقاط (.)
+            if not row and "@gmail.com" in email.strip().lower():
+                target_norm = normalize_email_for_comparison(email)
+                cursor.execute("""
+                    SELECT * FROM verification_codes
+                    WHERE code = ? AND code_type = ? AND is_used = 0 AND lower(email) LIKE '%@gmail.com'
+                    ORDER BY id DESC;
+                """, (code.strip(), code_type))
+                for candidate in cursor.fetchall():
+                    if normalize_email_for_comparison(candidate["email"]) == target_norm:
+                        row = candidate
+                        break
 
             if not row:
                 return {"success": False, "valid": False, "error": "Invalid verification code"}
