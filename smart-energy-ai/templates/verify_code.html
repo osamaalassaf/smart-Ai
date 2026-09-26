@@ -63,30 +63,12 @@
         <button type="submit" class="hero-action full" style="margin-top: 4px;" data-i18n="auth_otp_verify_btn">Verify & Proceed</button>
       </form>
 
-      {% if active_code %}
-      <div style="background: rgba(222, 184, 92, 0.12); border: 1px solid var(--line-gold); border-radius: 12px; padding: 14px 18px; margin: 18px 0 20px; text-align: center;">
-        <div style="font-size: 11px; color: var(--gold-soft); text-transform: uppercase; letter-spacing: 0.1em; font-weight: 700;">
-          Security Verification Code · رمز التحقق الفوري
-        </div>
-        <div style="font-size: 32px; font-weight: 900; color: var(--gold); letter-spacing: 8px; margin: 8px 0; font-family: monospace;">
-          {{ active_code }}
-        </div>
-        <button type="button" onclick="autoFillCode('{{ active_code }}')" class="action-btn-sm" style="color: var(--gold-soft); border: 1px solid var(--line-gold); background: rgba(0,0,0,0.3); border-radius: 6px; padding: 6px 16px; font-size: 12px; cursor: pointer; font-weight: 600;">
-          Auto-fill & Verify · تعبئة الرمز ومتابعة
-        </button>
-      </div>
-      {% endif %}
-
       <div style="margin-top: 24px; display: flex; justify-content: space-between; align-items: center; font-size: 12px;">
         <form method="POST" action="{{ url_for('auth.resend_code') }}" style="display: inline;">
           <button type="submit" class="action-btn-sm" style="background: none; border: none; color: var(--gold); font-size: 12px; cursor: pointer; text-decoration: underline; padding: 0;" data-i18n="auth_otp_resend">
             Resend Code
           </button>
         </form>
-
-        <a href="{{ url_for('auth.bypass_verify') }}" style="color: var(--gold-soft); text-decoration: underline; font-weight: 700;">
-          Direct Entry · الدخول المباشر
-        </a>
 
         <a href="{{ url_for('auth.login') }}" style="color: var(--muted); text-decoration: none;" data-i18n="auth_otp_back">
           Back to Sign In
@@ -134,15 +116,6 @@
         }
       });
     });
-
-    function autoFillCode(code) {
-      if (!code) return;
-      for (let i = 0; i < 6 && i < code.length; i++) {
-        digits[i].value = code[i];
-      }
-      updateFullCode();
-      document.getElementById('otp-form').submit();
-    }
 
     function updateFullCode() {
       const code = digits.map(d => d.value).join('');

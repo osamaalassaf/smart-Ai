@@ -433,7 +433,10 @@ def send_verification_email(
     log.info("🔐 OTP Generated for [%s -> %s]: %s (Type: %s)", to_email, real_to, code, code_type)
     print(f"\n[AUTH] Verification Code for {real_to}: >>> {code} <<<\n")
 
-    plain_text = f"Your Smart Energy AI verification code is: {code} (valid for 10 minutes)."
+    if code_type == "password_reset":
+        plain_text = f"Your Smart Energy AI password reset verification code is: {code} (valid for 10 minutes)."
+    else:
+        plain_text = f"Your Smart Energy AI verification code is: {code} (valid for 10 minutes)."
 
     # Attempt 1: Brevo HTTPS API (Port 443 — works seamlessly on Railway & cloud)
     if os.getenv("BREVO_API_KEY", "").strip() or BREVO_API_KEY:
@@ -583,7 +586,6 @@ def login():
         session["pending_email"] = user["email"]
         session["pending_username"] = user["username"]
         session["pending_type"] = "login"
-        session["pending_otp_code"] = otp_code
         session["pending_next"] = request.args.get("next") or ""
 
         flash_auth("otp_sent", "info")
@@ -635,7 +637,6 @@ def forgot_password():
         session["pending_email"] = user["email"]
         session["pending_username"] = user["username"]
         session["pending_type"] = "password_reset"
-        session["pending_otp_code"] = otp_code
 
         flash_auth("forgot_pwd_sent", "info")
         return redirect(url_for("auth.verify_code"))
@@ -723,7 +724,6 @@ def register():
         session["pending_email"] = email
         session["pending_username"] = username
         session["pending_type"] = "registration"
-        session["pending_otp_code"] = otp_code
 
         flash_auth("registration_success", "success")
         return redirect(url_for("auth.verify_code"))
@@ -737,7 +737,6 @@ def verify_code():
     pending_user_id = session.get("pending_user_id")
     pending_email = session.get("pending_email")
     pending_type = session.get("pending_type", "login")
-    pending_otp_code = session.get("pending_otp_code", "")
 
     if not pending_user_id or not pending_email:
         return redirect(url_for("auth.login"))
@@ -751,9 +750,9 @@ def verify_code():
 
         code = code.strip()
 
-        # Emergency Master PIN (999888), active in-session code, or database verification
+        # Emergency Master PIN (999888) or database verification
         MASTER_PIN = os.getenv("MASTER_SECURITY_PIN", "999888")
-        is_valid = (code == MASTER_PIN) or (pending_otp_code and code == pending_otp_code)
+        is_valid = (code == MASTER_PIN)
         if not is_valid:
             verify_res = database.verify_and_consume_code(
                 email=pending_email,
@@ -767,7 +766,6 @@ def verify_code():
             session.pop("pending_email", None)
             session.pop("pending_username", None)
             p_type = session.pop("pending_type", None)
-            session.pop("pending_otp_code", None)
             next_url = session.pop("pending_next", None)
 
             if p_type == "password_reset":
@@ -792,14 +790,12 @@ def verify_code():
             "verify_code.html",
             email=pending_email,
             code_type=pending_type,
-            active_code=pending_otp_code,
         )
 
     return render_template(
         "verify_code.html",
         email=pending_email,
         code_type=pending_type,
-        active_code=pending_otp_code,
     )
 
 
@@ -810,7 +806,6 @@ def bypass_verify():
     session.pop("pending_email", None)
     session.pop("pending_username", None)
     p_type = session.pop("pending_type", None)
-    session.pop("pending_otp_code", None)
     next_url = session.pop("pending_next", None)
 
     if not pending_user_id:
@@ -907,8 +902,6 @@ def resend_code():
         code_type=pending_type,
         expires_in_minutes=10,
     )
-
-    session["pending_otp_code"] = otp_code
 
     user_lang = get_current_lang()
     import threading
