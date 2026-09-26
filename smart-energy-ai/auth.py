@@ -236,6 +236,44 @@ def send_email_via_brevo(
         or "Smart Energy AI"
     ).strip("'\" \t\r\n")
 
+    # If the user has an SMTP key (starts with xsmtpsib-), use Brevo SMTP Relay!
+    if api_key.startswith("xsmtpsib"):
+        log.info("Detected Brevo SMTP key (xsmtpsib), connecting to smtp-relay.brevo.com...")
+        print("[AUTH][BREVO] Detected Brevo SMTP key (xsmtpsib), trying Brevo SMTP relay...")
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = f"{sender_name} <{sender_email}>"
+        msg["To"] = to_email
+        if text_content:
+            msg.attach(MIMEText(text_content, "plain"))
+        msg.attach(MIMEText(html_content, "html"))
+
+        # Try Brevo SMTP relay ports: 587 (STARTTLS), 2525 (STARTTLS), 465 (SSL)
+        ports_to_try = [
+            (587, False),
+            (2525, False),
+            (465, True),
+        ]
+        for port, use_ssl in ports_to_try:
+            try:
+                if use_ssl:
+                    with smtplib.SMTP_SSL("smtp-relay.brevo.com", port, timeout=8.0) as server:
+                        server.login(sender_email, api_key)
+                        server.send_message(msg)
+                else:
+                    with smtplib.SMTP("smtp-relay.brevo.com", port, timeout=8.0) as server:
+                        server.starttls()
+                        server.login(sender_email, api_key)
+                        server.send_message(msg)
+                log.info("Brevo SMTP relay successfully delivered to %s on port %s", to_email, port)
+                print(f"[AUTH][BREVO] Successfully delivered to {to_email} via Brevo SMTP relay on port {port}!")
+                return True
+            except Exception as smtp_err:
+                log.warning("Brevo SMTP relay on port %s failed: %s", port, smtp_err)
+                print(f"[AUTH][BREVO] Port {port} failed: {smtp_err}")
+
+        print("[AUTH][BREVO] SMTP ports failed, attempting HTTP REST API fallback...")
+
     url = "https://api.brevo.com/v3/smtp/email"
     headers = {
         "accept": "application/json",
@@ -1053,6 +1091,36 @@ def test_email():
         diag["status"] = "error"
         diag["message"] = "BREVO_API_KEY is missing or empty in Railway Variables."
         return jsonify(diag), 400
+
+    # If the user has an SMTP key (starts with xsmtpsib-), test Brevo SMTP Relay!
+    if api_key.startswith("xsmtpsib"):
+        diag["key_type"] = "Brevo SMTP Key (xsmtpsib)"
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"Smart Energy AI - Brevo SMTP Test [{test_code}]"
+        msg["From"] = f"{sender_name} <{sender_email}>"
+        msg["To"] = target
+        msg.attach(MIMEText(f"Brevo SMTP Relay Test Code: {test_code}", "plain"))
+        msg.attach(MIMEText(f"<h2>Brevo SMTP Connection Succeeded!</h2><p>Your test code is: <strong>{test_code}</strong></p>", "html"))
+
+        smtp_errors = {}
+        for port, use_ssl in [(587, False), (2525, False), (465, True)]:
+            try:
+                if use_ssl:
+                    with smtplib.SMTP_SSL("smtp-relay.brevo.com", port, timeout=8.0) as server:
+                        server.login(sender_email, api_key)
+                        server.send_message(msg)
+                else:
+                    with smtplib.SMTP("smtp-relay.brevo.com", port, timeout=8.0) as server:
+                        server.starttls()
+                        server.login(sender_email, api_key)
+                        server.send_message(msg)
+                diag["status"] = "success"
+                diag["method"] = f"Brevo SMTP Relay (port {port})"
+                diag["message"] = f"Test email sent successfully to {target} via Brevo SMTP on port {port}! Check your inbox."
+                return jsonify(diag), 200
+            except Exception as e:
+                smtp_errors[f"port_{port}"] = str(e)
+        diag["smtp_relay_errors"] = smtp_errors
 
     url = "https://api.brevo.com/v3/smtp/email"
     headers = {
