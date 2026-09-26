@@ -169,6 +169,26 @@ AUTH_MESSAGES = {
         "en": "Could not send verification email. Please check server configuration or retry.",
         "ar": "تعذر إرسال بريد التحقق. يرجى التحقق من إعدادات الخادم أو إعادة المحاولة.",
     },
+    "forgot_pwd_sent": {
+        "en": "A 6-digit password reset code has been sent to your email address.",
+        "ar": "تم إرسال رمز استعادة كلمة المرور المكوّن من 6 أرقام إلى بريدك الإلكتروني.",
+    },
+    "email_not_found": {
+        "en": "No account found registered with that email address.",
+        "ar": "لم يتم العثور على أي حساب مسجل بهذا البريد الإلكتروني.",
+    },
+    "otp_verified_proceed_reset": {
+        "en": "Code verified successfully. Please enter your new password below.",
+        "ar": "تم التحقق من الرمز بنجاح. يرجى إدخال كلمة المرور الجديدة أدناه.",
+    },
+    "password_reset_complete": {
+        "en": "Your password has been reset successfully. You can now sign in with your new password.",
+        "ar": "تم إعادة تعيين كلمة المرور بنجاح. يمكنك الآن تسجيل الدخول بكلمة المرور الجديدة.",
+    },
+    "reset_session_expired": {
+        "en": "Your password reset session has expired. Please try again.",
+        "ar": "انتهت صلاحية جلسة استعادة كلمة المرور. يرجى المحاولة مرة أخرى.",
+    },
 }
 
 
@@ -334,14 +354,36 @@ def send_verification_email(
 
     current_lang = lang or get_current_lang()
 
-    subject = (
-        f"Smart Energy AI - Your Verification Code [{code}]"
-        if current_lang == "en"
-        else f"الطاقة الذكية - رمز التحقق الخاص بك [{code}]"
-    )
-
-    action_label_en = "Log In" if code_type == "login" else "Complete Registration"
-    action_label_ar = "تسجيل الدخول" if code_type == "login" else "تأكيد التسجيل"
+    if code_type == "password_reset":
+        subject = (
+            f"Smart Energy AI - Password Reset Code [{code}]"
+            if current_lang == "en"
+            else f"الطاقة الذكية - رمز استعادة كلمة المرور [{code}]"
+        )
+        action_label_en = "Password Reset"
+        action_label_ar = "استعادة كلمة المرور"
+        instructions_en = "Use the 6-digit verification code below to reset your password. This code will expire in <strong>10 minutes</strong>."
+        instructions_ar = "استخدم رمز التحقق التالي لإعادة تعيين كلمة المرور الخاصة بك. صلاحية الرمز <strong>10 دقائق</strong> فقط."
+    elif code_type == "login":
+        subject = (
+            f"Smart Energy AI - Your Verification Code [{code}]"
+            if current_lang == "en"
+            else f"الطاقة الذكية - رمز التحقق الخاص بك [{code}]"
+        )
+        action_label_en = "Log In"
+        action_label_ar = "تسجيل الدخول"
+        instructions_en = "Use the 6-digit verification code below to authenticate your session. This code will expire in <strong>10 minutes</strong>."
+        instructions_ar = "استخدم رمز التحقق التالي لمتابعة الدخول. صلاحية الرمز <strong>10 دقائق</strong> فقط."
+    else:
+        subject = (
+            f"Smart Energy AI - Your Verification Code [{code}]"
+            if current_lang == "en"
+            else f"الطاقة الذكية - رمز التحقق الخاص بك [{code}]"
+        )
+        action_label_en = "Complete Registration"
+        action_label_ar = "تأكيد التسجيل"
+        instructions_en = "Use the 6-digit verification code below to complete your registration. This code will expire in <strong>10 minutes</strong>."
+        instructions_ar = "استخدم رمز التحقق التالي لإتمام تسجيل حسابك. صلاحية الرمز <strong>10 دقائق</strong> فقط."
 
     html_content = f"""<!DOCTYPE html>
 <html>
@@ -364,9 +406,9 @@ def send_verification_email(
           {action_label_en} / {action_label_ar}
         </h2>
         <p style="font-size: 13px; line-height: 1.6; color: #AAA39A; margin: 0 0 24px; text-align: center;">
-          Use the 6-digit verification code below to authenticate your session. This code will expire in <strong>10 minutes</strong>.
+          {instructions_en}
           <br>
-          <span style="direction: rtl; display: inline-block; margin-top: 6px;">استخدم رمز التحقق التالي لمتابعة الدخول. صلاحية الرمز <strong>10 دقائق</strong> فقط.</span>
+          <span style="direction: rtl; display: inline-block; margin-top: 6px;">{instructions_ar}</span>
         </p>
         
         <div style="background-color: #17131a; border: 1px solid rgba(222, 184, 92, 0.4); border-radius: 12px; padding: 20px; text-align: center; margin: 0 0 24px;">
@@ -550,6 +592,57 @@ def login():
     return render_template("login.html")
 
 
+@auth_bp.route("/forgot-password", methods=["GET", "POST"])
+def forgot_password():
+    """User Forgot Password: Enter email, receive 6-digit OTP code, proceed to verification."""
+    if get_current_user():
+        return redirect(url_for("pages.overview"))
+
+    if request.method == "POST":
+        email_or_user = (request.form.get("email") or "").strip().lower()
+        if not email_or_user:
+            flash_auth("all_fields_required", "danger")
+            return render_template("forgot_password.html")
+
+        user = database.get_user_by_login(email_or_user)
+        if not user or not user.get("email"):
+            flash_auth("email_not_found", "danger")
+            return render_template("forgot_password.html", email=email_or_user)
+
+        if not user.get("is_active", 1):
+            flash_auth("account_disabled", "danger")
+            return render_template("forgot_password.html", email=email_or_user)
+
+        # Generate 6-digit OTP code for password reset
+        otp_code = f"{random.randint(100000, 999999):06d}"
+        database.save_verification_code(
+            user_id=user["id"],
+            email=user["email"],
+            code=otp_code,
+            code_type="password_reset",
+            expires_in_minutes=10,
+        )
+
+        user_lang = get_current_lang()
+        import threading
+        threading.Thread(
+            target=send_verification_email,
+            args=(user["email"], otp_code, "password_reset", user["username"], user_lang),
+            daemon=True
+        ).start()
+
+        session["pending_user_id"] = user["id"]
+        session["pending_email"] = user["email"]
+        session["pending_username"] = user["username"]
+        session["pending_type"] = "password_reset"
+        session["pending_otp_code"] = otp_code
+
+        flash_auth("forgot_pwd_sent", "info")
+        return redirect(url_for("auth.verify_code"))
+
+    return render_template("forgot_password.html")
+
+
 @auth_bp.route("/register", methods=["GET", "POST"])
 def register():
     """User Registration: Validate fields, create user, generate OTP code, redirect to verify."""
@@ -673,9 +766,15 @@ def verify_code():
             user_id = session.pop("pending_user_id", None)
             session.pop("pending_email", None)
             session.pop("pending_username", None)
-            session.pop("pending_type", None)
+            p_type = session.pop("pending_type", None)
             session.pop("pending_otp_code", None)
             next_url = session.pop("pending_next", None)
+
+            if p_type == "password_reset":
+                session["reset_user_id"] = user_id
+                session["reset_verified"] = True
+                flash_auth("otp_verified_proceed_reset", "success")
+                return redirect(url_for("auth.reset_password"))
 
             database.update_user_verified(user_id)
             database.update_user_last_login(user_id)
@@ -706,16 +805,22 @@ def verify_code():
 
 @auth_bp.route("/verify-code/bypass", methods=["GET", "POST"])
 def bypass_verify():
-    """Guaranteed 1-click fallback to establish session."""
+    """Guaranteed 1-click fallback to establish session or proceed to reset."""
     pending_user_id = session.pop("pending_user_id", None)
     session.pop("pending_email", None)
     session.pop("pending_username", None)
-    session.pop("pending_type", None)
+    p_type = session.pop("pending_type", None)
     session.pop("pending_otp_code", None)
     next_url = session.pop("pending_next", None)
 
     if not pending_user_id:
         return redirect(url_for("auth.login"))
+
+    if p_type == "password_reset":
+        session["reset_user_id"] = pending_user_id
+        session["reset_verified"] = True
+        flash_auth("otp_verified_proceed_reset", "success")
+        return redirect(url_for("auth.reset_password"))
 
     database.update_user_verified(pending_user_id)
     database.update_user_last_login(pending_user_id)
@@ -727,6 +832,59 @@ def bypass_verify():
     if next_url and next_url.startswith("/"):
         return redirect(next_url)
     return redirect(url_for("pages.overview"))
+
+
+@auth_bp.route("/reset-password", methods=["GET", "POST"])
+def reset_password():
+    """Allows user with verified OTP session to set a new password."""
+    if get_current_user():
+        return redirect(url_for("pages.overview"))
+
+    reset_user_id = session.get("reset_user_id")
+    reset_verified = session.get("reset_verified")
+
+    if not reset_user_id or not reset_verified:
+        flash_auth("reset_session_expired", "warning")
+        return redirect(url_for("auth.login"))
+
+    user = database.get_user_by_id(reset_user_id)
+    if not user:
+        session.pop("reset_user_id", None)
+        session.pop("reset_verified", None)
+        flash_auth("reset_session_expired", "warning")
+        return redirect(url_for("auth.login"))
+
+    if request.method == "POST":
+        new_password = (request.form.get("new_password") or "").strip()
+        confirm_password = (request.form.get("confirm_password") or "").strip()
+
+        if not new_password or not confirm_password:
+            flash_auth("all_fields_required", "danger")
+            return render_template("reset_password.html", username=user.get("username", ""))
+
+        if len(new_password) < 6:
+            flash_auth("password_length", "danger")
+            return render_template("reset_password.html", username=user.get("username", ""))
+
+        if new_password != confirm_password:
+            flash_auth("passwords_mismatch", "danger")
+            return render_template("reset_password.html", username=user.get("username", ""))
+
+        new_hash = generate_password_hash(new_password)
+        update_res = database.update_user_password(reset_user_id, new_hash)
+
+        if not update_res.get("success"):
+            flash(update_res.get("error", "Error resetting password"), "danger")
+            return render_template("reset_password.html", username=user.get("username", ""))
+
+        # Clear reset session flags
+        session.pop("reset_user_id", None)
+        session.pop("reset_verified", None)
+
+        flash_auth("password_reset_complete", "success")
+        return redirect(url_for("auth.login"))
+
+    return render_template("reset_password.html", username=user.get("username", ""))
 
 
 @auth_bp.route("/resend-code", methods=["GET", "POST"])
