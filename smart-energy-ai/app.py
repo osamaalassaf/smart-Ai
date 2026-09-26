@@ -50,6 +50,7 @@ except ImportError:  # python-dotenv is optional at runtime
 
 from flask import Flask, jsonify, render_template, request, send_file, session, redirect, url_for, flash
 from werkzeug.exceptions import HTTPException
+from werkzeug.middleware.proxy_fix import ProxyFix
 from auth import auth_bp, get_current_user
 
 import ml_explainer
@@ -100,6 +101,11 @@ app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "smart_energy_ai_secret_key_production_2026_super_safe")
 app.permanent_session_lifetime = dt.timedelta(days=7)
 app.json.sort_keys = False
+
+# Reverse proxy support (Railway, Heroku, AWS, Cloudflare)
+# Corrects request.scheme and request.is_secure so HTTPS is always recognized
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+
 app.register_blueprint(pages)
 app.register_blueprint(auth_bp)
 
@@ -111,11 +117,26 @@ database.init_auth_tables()
 def inject_user():
     return {"current_user": get_current_user()}
 
-# Response headers and a request size cap. See security.py; it adds nothing
-# to the request path and changes no existing behaviour.
+
+@app.before_request
+def enforce_https_redirect():
+    """Ensure all cloud/production traffic is strictly upgraded to HTTPS."""
+    host = request.host.split(":")[0]
+    if host in ("localhost", "127.0.0.1", "0.0.0.0") or host.endswith(".local"):
+        return None
+
+    proto = request.headers.get("X-Forwarded-Proto", request.scheme or "http").lower()
+    if proto == "http":
+        secure_url = request.url.replace("http://", "https://", 1)
+        return redirect(secure_url, code=301)
+    return None
+
+
+# Response headers, CSP, HSTS, and request size cap.
+is_cloud_prod = bool(os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("PORT") or not os.getenv("FLASK_DEBUG"))
 security.apply(
     app,
-    force_https=os.getenv("FORCE_HTTPS", "false").lower() in {"1", "true", "yes", "on"},
+    force_https=os.getenv("FORCE_HTTPS", "true" if is_cloud_prod else "false").lower() in {"1", "true", "yes", "on"},
     enabled=os.getenv("SECURITY_HEADERS", "on").lower() not in {"0", "off", "false", "no"},
 )
 

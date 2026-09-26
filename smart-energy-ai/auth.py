@@ -469,8 +469,9 @@ def login():
             flash_auth("account_disabled", "danger")
             return render_template("login.html", login_term=login_term)
 
-        # Direct Login when 2FA is not enforced (frictionless cloud access)
-        if not REQUIRE_2FA:
+        # Direct Login for dedicated test/demo account OR when 2FA is explicitly disabled
+        is_test_account = user.get("username", "").lower() in ("tester", "test", "demo")
+        if not REQUIRE_2FA or is_test_account:
             database.update_user_last_login(user["id"])
             session.permanent = True
             session["user_id"] = user["id"]

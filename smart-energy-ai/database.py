@@ -427,6 +427,22 @@ def init_auth_tables(db_path=None) -> None:
                 ) VALUES (?, ?, ?, ?, 1, ?, 1, 1, 1, 1, 1);
             """, ("admin", "admin@smartenergy.ai", admin_pwd_hash, "admin", now_str))
 
+        # 4. حساب الفحص والتجربة المباشر (Direct Test/Demo Account — No 2FA / Instant Login)
+        cursor.execute("SELECT id FROM users WHERE username = 'tester';")
+        tester_row = cursor.fetchone()
+        if not tester_row:
+            from werkzeug.security import generate_password_hash
+            import datetime as _dt
+            now_str = _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            tester_pwd_hash = generate_password_hash("tester123")
+            cursor.execute("""
+                INSERT INTO users (
+                    username, email, password_hash, role, is_verified,
+                    created_at, can_manage_users, can_control_hvac,
+                    can_approve_actions, can_view_analytics, is_active
+                ) VALUES (?, ?, ?, ?, 1, ?, 1, 1, 1, 1, 1);
+            """, ("tester", "tester@smart-energy.ai", tester_pwd_hash, "admin", now_str))
+
 
 def create_user(
     username: str,

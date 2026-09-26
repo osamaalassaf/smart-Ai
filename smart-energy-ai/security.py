@@ -39,6 +39,7 @@ CONTENT_SECURITY_POLICY: Final[str] = "; ".join(
         "form-action 'self'",
         "frame-ancestors 'none'",
         "object-src 'none'",
+        "upgrade-insecure-requests",
     ]
 )
 
